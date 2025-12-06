@@ -1,0 +1,12 @@
+demucs
+librosa
+basic-pitch
+tensorflow
+tensorflow-hub
+numpy
+scipy
+soundfile
+resampy
+torch
+torchaudio
+pretty_midi
