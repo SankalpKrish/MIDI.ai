@@ -1,87 +1,153 @@
 # MIDI.ai
 
-MIDI.ai is a modular audio processing framework developed to explore the intersection of Digital Signal Processing (DSP) and Machine Learning. The project implements a robust end-to-end pipeline for converting raw polyphonic audio into structured MIDI data, utilizing state-of-the-art deep learning models for source separation, transcription, and classification.
-
-Designed as an advanced personal project, this repository demonstrates the integration of multiple complex neural networks into a cohesive, production-ready Python application.
+MIDI.ai is a modular audio processing framework that converts raw polyphonic audio into structured MIDI data, using deep learning models for source separation, transcription, and instrument classification.
 
 ## Project Overview
 
-The primary objective of MIDI.ai is to solve the complex problem of Automatic Music Transcription (AMT) by breaking it down into specialized sub-tasks. Rather than relying on a single monolithic model, the system employs a "divide and conquer" strategy:
+The system breaks Automatic Music Transcription (AMT) into specialized sub-tasks:
 
-1.  Isolating individual instruments to reduce spectral overlapping.
-2.  Analyzing global musical features (Tempo, Key) from the most reliable sources.
-3.  Transcribing and recombining these streams into a synchronized MIDI file.
+1. Isolate individual instruments via source separation
+2. Analyze global musical features (tempo, key, tuning)
+3. Classify instrument timbres and assign General MIDI programs
+4. Transcribe each stem to MIDI with quantization and artifact removal
+5. Merge all stems into a single synchronized multi-track MIDI file
 
-## Technical Methodology
-
-The pipeline executes the following stages sequentially:
+## Pipeline Stages
 
 ### 1. Source Separation (Demucs)
 
-The input audio is first processed using the **Hybrid Transformer Demucs (v4)** model. This deep learning architecture allows for high-fidelity separation of the mix into four constituent stems: Drums, Bass, Vocals, and Other. This step is critical for reducing interference during pitch detection.
+Input audio is separated into **Drums, Bass, Vocals, Other** using Hybrid Transformer Demucs (v4). The model is loaded once per pipeline instance (not per file), and separated stems are cached via SHA256 content hash so re-processing skips re-separation.
 
-### 2. Music Information Retrieval (MIR)
+### 2. Music Information Retrieval (Librosa)
 
-Global metadata is extracted using **Librosa** and signal processing techniques:
+- **BPM**: Detected from the Drums stem for clearest transient information
+- **Key**: Krumhansl-Schmuckler profile correlation on chroma features
+- **Tuning**: A4 reference estimation (defaults to 440Hz)
 
-- **BPM Detection**: To ensure rhythmic accuracy, tempo is detected specifically from the _Drums_ stem, which provides the clearest transient information.
-- **Key & Tuning**: Spectral chromagrams are generated to estimate the musical key and the reference tuning frequency (e.g., A4 = 440Hz).
+### 3. Instrument Classification
 
-### 3. Classification (YAMNet)
+- **Bass stem** → Electric Bass (pick) — GM 34
+- **Vocals stem** → Choir Aahs — GM 52
+- **Other stem** → Classified by YAMNet (TF-Hub) with longest-match GM mapping
+- **Drums** → Routed to MIDI percussion channel (channel 10)
 
-The pipeline employs **YAMNet**, a pre-trained deep neural network, to classify the timbre of all non-drum, non-vocal stems (Bass, Other). Classification results are mapped to General MIDI program numbers, ensuring proper instrument assignment in the final MIDI output. This adds semantic understanding to the transcription, identifying whether the accompaniment consists of guitars, pianos, synthesizers, or other instruments.
+YAMNet class map is bundled in-repo (`src/data/yamnet_class_map.csv`); no runtime network fetch.
 
 ### 4. Transcription (Basic Pitch)
 
-Audio-to-MIDI conversion is handled by **Basic Pitch**, a lightweight yet powerful model optimized for instrument transcription. It predicts pitch events with high time-frequency resolution.
+All stems are transcribed in a single batched `predict_and_save` call. Basic Pitch is lazy-imported at call time to avoid forcing TF graph construction at module load.
 
-### 5. Algorithmic Post-Processing
+### 5. Post-Processing
 
-Raw model outputs are rarely perfect. A custom post-processing layer applies musical heuristics:
+- **Quantization**: Notes snapped to a 1/16th note grid (after quantization, zero-length notes removed)
+- **Ghost-note filter**: Applied post-quantization to avoid creating zero-duration artifacts
+- **Program Assignment**: GM programs assigned per stem based on classification
 
-- **Quantization**: Note onsets and offsets are snapped to a 1/16th note grid derived from the detected BPM.
-- **Artifact Removal**: Short-duration "ghost notes" (likely false positives) are algorithmically filtered out to produce a cleaner score.
-- **Program Assignment**: YAMNet classification results are mapped to General MIDI program numbers and automatically assigned to MIDI tracks for proper instrument playback.
+### 6. Merge
 
-## Software Architecture
+All per-stem MIDI files are merged into a single multi-track `.mid` file with correct BPM, program numbers, and drum channel assignment.
 
-The codebase has been refactored from a monolithic script into a modular package structure to ensure maintainability and scalability.
+## Output
 
-- `src.pipeline`: Orchestrator that manages data flow between subsystems.
-- `src.separation`: Encapsulates the Demucs inference logic.
-- `src.analysis`: Handles MIR tasks and DSP algorithms.
-- `src.transcription`: Manages the interface with the Basic Pitch library.
-- `src.postprocessing`: Contains the custom quantization and cleaning logic.
-- `src.identification`: Wraps the TensorFlow Hub YAMNet model.
+```
+output/<input_name>/
+├── stems/
+│   └── htdemucs/<input_name>/
+│       ├── drums.wav
+│       ├── bass.wav
+│       ├── other.wav
+│       └── vocals.wav
+├── midi/
+│   ├── drums.mid
+│   ├── bass.mid
+│   ├── other.mid
+│   └── vocals.mid
+└── <input_name>.mid          # merged multi-track output
+```
+
+## Architecture
+
+- `audio_pipeline.py` — CLI entry point (single file, directory, or glob)
+- `src/pipeline.py` — Orchestrator; error-handled per-stage execution
+- `src/separation.py` — Demucs inference + stem caching
+- `src/analysis.py` — BPM, key, tuning estimation
+- `src/identification.py` — YAMNet instrument classifier + GM mapping
+- `src/transcription.py` — Basic Pitch transcription + post-processing
+- `src/postprocessing.py` — Quantization, ghost-note removal, merge
+- `src/config.py` — Centralized `Config` dataclass
+- `src/exceptions.py` — Custom exception hierarchy + `StageResult`
+- `src/logging_config.py` — Logging setup (stderr); JSON output on stdout
+- `src/utils.py` — NumpyEncoder for JSON serialization, torchaudio monkeypatch
+- `tests/` — pytest suite (post-processing, merge, utilities)
 
 ## Installation
 
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/yourusername/MIDI.ai.git
-    cd MIDI.ai
-    ```
-2.  Install the required dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
+```bash
+git clone https://github.com/SankalpKrish/MIDI.ai.git
+cd MIDI.ai
+pip install -r requirements.txt
+```
 
-_Note: Execution requires significant computational resources. A GPU with CUDA support is highly recommended for the TensorFlow and PyTorch components._
+Or install as a package:
+
+```bash
+pip install -e .
+```
+
+A GPU with CUDA support is recommended for TensorFlow and PyTorch components.
 
 ## Usage
 
-The pipeline can be executed via the command line interface:
-
 ```bash
-python audio_pipeline.py <input_audio_file>
+python audio_pipeline.py <input> [--output_dir OUTPUT] [--verbose] [--no-cache]
 ```
 
 **Arguments:**
 
-- `input_file`: Path to the .mp3 or .wav file to transcribe.
-- `--output_dir`: (Optional) Directory for generated stems and MIDI files.
+| Argument | Description |
+|----------|-------------|
+| `input` | Path to audio file, directory of audio files, or glob pattern |
+| `--output_dir` | Output directory (default: `output/`) |
+| `--verbose`, `-v` | Enable debug logging |
+| `--no-cache` | Skip stem cache (re-run Demucs) |
+
+**Examples:**
+
+```bash
+# Single file
+python audio_pipeline.py song.wav
+
+# Directory (processes all .wav/.mp3/.flac)
+python audio_pipeline.py input/ --verbose
+
+# Glob pattern
+python audio_pipeline.py "tracks/*.mp3"
+
+# Batch results written to output/_batch_results.json
+```
+
+**As an installed CLI:**
+
+```bash
+midi-ai song.wav --verbose
+```
+
+## Docker
+
+```bash
+docker build -t midi-ai .
+docker run --gpus all -v $(pwd)/input:/input -v $(pwd)/output:/output midi-ai /input/song.wav --output_dir /output
+```
+
+## CI
+
+GitHub Actions runs ruff linting, pytest, and mypy on push/PR (ubuntu + windows).
 
 ## Future Improvements
 
-- Implement VST plugin support for direct DAW integration.
-- Improve quantization logic to support swing and triplet grids.
+- VST plugin for DAW integration
+- Swing/triplet quantization
+- MusicXML export
+- Chord detection / harmonic annotation
+- Web API (FastAPI)
+- Real-time / streaming transcription
