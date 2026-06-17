@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "midi-ai"
+version = "0.1.0"
+description = "Audio-to-MIDI transcription pipeline with source separation and instrument identification"
+requires-python = ">=3.10"
+dependencies = [
+    "demucs>=4.0",
+    "librosa>=0.10",
+    "basic-pitch>=0.3",
+    "tensorflow>=2.13,<2.16",
+    "tensorflow-hub>=0.14",
+    "numpy>=1.24,<2.0",
+    "scipy>=1.10",
+    "soundfile>=0.12",
+    "resampy>=0.4",
+    "torch>=2.0",
+    "torchaudio>=2.0",
+    "pretty_midi>=0.2",
+    "requests>=2.28",
+]
+
+[project.scripts]
+midi-ai = "audio_pipeline:main"
+
+[tool.setuptools.packages.find]
+include = ["src*"]

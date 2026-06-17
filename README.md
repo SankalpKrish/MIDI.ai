@@ -29,7 +29,7 @@ Global metadata is extracted using **Librosa** and signal processing techniques:
 
 ### 3. Classification (YAMNet)
 
-The pipeline employs **YAMNet**, a pre-trained deep neural network, to classify the timbre of the "Other" stem. This adds semantic understanding to the transcription, identifying whether the accompaniment consists of guitars, pianos, or synthesizers.
+The pipeline employs **YAMNet**, a pre-trained deep neural network, to classify the timbre of all non-drum, non-vocal stems (Bass, Other). Classification results are mapped to General MIDI program numbers, ensuring proper instrument assignment in the final MIDI output. This adds semantic understanding to the transcription, identifying whether the accompaniment consists of guitars, pianos, synthesizers, or other instruments.
 
 ### 4. Transcription (Basic Pitch)
 
@@ -41,6 +41,7 @@ Raw model outputs are rarely perfect. A custom post-processing layer applies mus
 
 - **Quantization**: Note onsets and offsets are snapped to a 1/16th note grid derived from the detected BPM.
 - **Artifact Removal**: Short-duration "ghost notes" (likely false positives) are algorithmically filtered out to produce a cleaner score.
+- **Program Assignment**: YAMNet classification results are mapped to General MIDI program numbers and automatically assigned to MIDI tracks for proper instrument playback.
 
 ## Software Architecture
 
@@ -84,4 +85,3 @@ python audio_pipeline.py <input_audio_file>
 
 - Implement VST plugin support for direct DAW integration.
 - Improve quantization logic to support swing and triplet grids.
-- Fine-tune instrument recognition to automatically assign MIDI Program Change messages.

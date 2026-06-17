@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 import json
+from typing import Any
 import numpy as np
 import torch
 import torchaudio
 import soundfile as sf
 
 class NumpyEncoder(json.JSONEncoder):
-    # Special json encoder for numpy types.
-    def default(self, obj):
+    def default(self, obj: Any) -> Any:
         if isinstance(obj, np.integer):
             return int(obj)
         elif isinstance(obj, np.floating):

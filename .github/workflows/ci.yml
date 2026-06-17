@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  lint-test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - run: pip install -e .[dev]
+      - run: pip install ruff mypy pytest
+      - run: ruff check src/
+      - run: python -m pytest tests/ -v --tb=short -q
+        env:
+          TF_CPP_MIN_LOG_LEVEL: "3"
+      - name: mypy (light)
+        run: mypy src/ --ignore-missing-imports --follow-imports=skip

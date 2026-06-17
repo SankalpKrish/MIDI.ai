@@ -1,13 +1,17 @@
+from __future__ import annotations
+
+import logging
+from pathlib import Path
 import numpy as np
 import librosa
-from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 class GlobalAnalyzer:
-    def analyze(self, key_source_path, bpm_source_path=None):
-        # Extracts BPM, Key, and Tuning Standard.
-        key_source_name = Path(key_source_path).name
-        bpm_source_name = Path(bpm_source_path if bpm_source_path else key_source_path).name
-        print(f"Performing global analysis (Key: {key_source_name}, BPM Source: {bpm_source_name})...")
+    def analyze(self, key_source_path: str | Path | None, bpm_source_path: str | Path | None = None) -> dict[str, float | str]:
+        key_source_name = Path(key_source_path).name if key_source_path else "None"
+        bpm_source_name = Path(bpm_source_path if bpm_source_path else key_source_path).name if (bpm_source_path or key_source_path) else "None"
+        logger.info("Performing global analysis (Key: %s, BPM Source: %s)...", key_source_name, bpm_source_name)
         
         # Load audio for Key/Tuning
         y_key, sr_key = librosa.load(key_source_path, sr=None)
@@ -35,7 +39,7 @@ class GlobalAnalyzer:
             "tuning_hz": round(tuning_hz, 2)
         }
 
-    def _estimate_key(self, y, sr):
+    def _estimate_key(self, y: np.ndarray, sr: int) -> str:
         chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
         chroma_avg = np.mean(chroma, axis=1)
 
@@ -64,7 +68,7 @@ class GlobalAnalyzer:
         else:
             return f"{pitches[best_minor_idx]} Minor"
 
-    def _estimate_tuning_standard(self, y, sr):
+    def _estimate_tuning_standard(self, y: np.ndarray, sr: int) -> float:
         # Focus on A4 range (400-500Hz)
         pitches, magnitudes = librosa.piptrack(y=y, sr=sr, fmin=400, fmax=500)
         
